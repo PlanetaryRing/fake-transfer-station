@@ -1,0 +1,79 @@
+# CPA v8-style basic settings. Copy to config.yaml to customize.
+config-version: 8
+
+server:
+  host: "0.0.0.0"
+  port: 8317
+
+access:
+  # Client keys for this server; not upstream provider credentials.
+  # An empty list allows anonymous access, following CPA's config-access behavior.
+  api-keys:
+    - "sk-local-prank"
+
+upstream:
+  claude:
+    # CPA wraps non-Claude IDs in Anthropic listings. The wrapped IDs also work
+    # in generation requests. Set true to expose original IDs instead.
+    disable-cloaking-model-list: false
+
+# Project-specific settings (not part of upstream CPA).
+prank:
+  default-content-pool: funny
+  max-request-bytes: 8388608
+  streaming:
+    initial-delay-ms: 300
+    chunk-size: 4
+    keepalive-seconds: 15
+
+  # IDs are arbitrary public names, not real model/provider connections.
+  models:
+    - id: "gpt-prank"
+      display-name: "GPT Prank"
+      owned-by: "openai"
+      context-length: 128000
+      max-output-tokens: 16384
+      aliases: ["gpt-prank-latest"]
+      streaming:
+        # Each block samples 25–35 estimated tokens/s. Offset is absolute, not %.
+        tokens-per-second: 30
+        tokens-per-second-offset: 5
+
+    - id: "claude-prank"
+      display-name: "Claude Prank"
+      owned-by: "anthropic"
+      context-length: 200000
+      max-output-tokens: 16384
+      content-pool: funny
+      streaming:
+        chunk-size: 2
+        tokens-per-second: 20
+        tokens-per-second-offset: 4
+
+    - id: "gemini-prank"
+      display-name: "Gemini Prank"
+      owned-by: "google"
+      streaming:
+        tokens-per-second: 45
+        tokens-per-second-offset: 10
+
+  content-pools:
+    funny:
+      selection: random
+      items:
+        - id: dragon
+          file: "./contents/dragon.txt"
+          weight: 3
+        - id: cat
+          weight: 1
+          text: |-
+            ```text
+             /\_/\
+            ( o.o )
+             > ^ <
+            ```
+            模型正在摸鱼，请欣赏小猫。
+        - id: surprise
+          text: |-
+            正在认真思考……
+            思考完成：今天适合开怀大笑！

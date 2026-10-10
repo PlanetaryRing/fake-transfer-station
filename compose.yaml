@@ -1,0 +1,21 @@
+services:
+  station:
+    build: .
+    ports:
+      - "8317:8317"
+    volumes:
+      # Change source to ./config.yaml when using a personalized config file.
+      - type: bind
+        source: ./config.example.yaml
+        target: /app/config.yaml
+        read_only: true
+      - type: bind
+        source: ./contents
+        target: /app/contents
+        read_only: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8317/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
