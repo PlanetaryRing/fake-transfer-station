@@ -1,0 +1,3 @@
+# Keep vendored release bytes identical to the upstream SHA-256 on every OS.
+fake_transfer_station/static/management.html -text
+fake_transfer_station/static/management.LICENSE -text

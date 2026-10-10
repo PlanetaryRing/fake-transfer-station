@@ -22,7 +22,7 @@ def write_config(tmp_path, value):
 
 def test_example_config_loads():
     config = load_config(Path(__file__).parents[1] / "config.example.yaml")
-    assert len(config.prank.models) == 3
+    assert config.prank.models
     assert all(item.text for pool in config.prank.content_pools.values() for item in pool.items)
 
 

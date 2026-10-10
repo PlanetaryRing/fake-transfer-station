@@ -23,6 +23,9 @@
 | 方法 | 路径 | 行为 |
 |---|---|---|
 | GET | `/` | CPA 风格服务信息 |
+| GET / HEAD | `/management.html` | 官方 v1.26.0 原版静态页面，字节未修改 |
+| GET | `/management.LICENSE` | 原版页面的 MIT 许可证 |
+| GET / HEAD / POST / PUT / PATCH / DELETE | `/v8/management`、`/v0/management` 及其子路径 | 固定 403，管理未启用；OPTIONS 由全局 CORS 处理 |
 | GET / HEAD | `/healthz` | 健康检查 |
 | GET | `/v1/models` | OpenAI、Anthropic 或 Codex 模型目录 |
 | GET | `/v1/models/{model}` | 对应目录格式的模型详情，支持路径含斜杠 |
@@ -73,7 +76,8 @@ Codex 返回 `models`，含 slug、上下文长度、指令模板及必要的 nu
 - Gemini 流固定为 SSE，没有实现不带 `alt=sse` 时的 JSON 数组流。
 - 基础配置支持 `server`、`access`、`upstream.claude.disable-cloaking-model-list`，以及旧版顶层 `host/port/api-keys`。同字段 v8 值优先。不是任意完整 CPA 配置文件的替代解析器，未知配置字段报错。
 - 模型目录不提供分页，返回全部配置模型。
-- CPA 的图像、音频、视频、Realtime、Interactions、Alpha Search、Home、OAuth、管理 API 和管理页面尚未实现；未注册路径返回 404。
+- CPA 的图像、音频、视频、Realtime、Interactions、Alpha Search、Home、OAuth 尚未实现；未注册路径返回 404。
+- 管理页面直接分发官方 Management Center v1.26.0 发布文件；所有本站管理 API 固定拒绝，未实现真实管理操作。前端保留原版的浏览器存储和服务器地址选择行为，不保证填写另一台真实 CPA 的地址时也无法登录。来源和 SHA-256 见 `fake_transfer_station/static/README.md`。
 - CORS 沿用 CPA 的通配方式，暴露本服务实际使用的请求 ID 头；未复刻 CPA 全部版本与内部追踪头。
 
 ## 验证状态
@@ -81,7 +85,8 @@ Codex 返回 `models`，含 slug、上下文长度、指令模板及必要的 nu
 源码行为已用于编写鉴权和目录断言，响应类型参考已安装 SDK。
 
 - `python -m fake_transfer_station --check-config`：通过，3 个模型、1 个内容池。
-- `python -m pytest -q`：**73 passed**，包含真实本地 TCP 服务、SDK 聚合、WebSocket、tokens/s 调度及断连取消。调速修改新增模型独立速率、偏移边界、快慢抽样、零偏移、别名映射和请求快照测试；确定性时钟测试验证波动速度及累计 token 计费一致性。
+- `python -m pytest -q`：**84 passed**，包含真实本地 TCP 服务、SDK 聚合、WebSocket、tokens/s 调度及断连取消。调速修改新增模型独立速率、偏移边界、快慢抽样、零偏移、别名映射和请求快照测试；确定性时钟测试验证波动速度及累计 token 计费一致性。
+- 管理页面：官方发布 SHA-256 校验通过，HTTP 返回的文件字节与官方资产一致；公开访问、HEAD、许可证、v8/v0 多方法及多种密钥固定拒绝测试通过。未启动浏览器验证视觉及点击交互。
 - `python -m tests.live_smoke --config config.example.yaml`：已针对用户启动的 `127.0.0.1:8317` 完成服务健康、鉴权、模型目录、错误响应、Chat/Completions、Responses、Messages、Gemini、compact、Codex 别名及 WebSocket 预热续接检查。
 - 重启后再次完成全部现有服务 smoke 检查。此次 Chat 流收到 51 个正文块，首块到末块约 4.68 秒，正文与配置内容池中的某一项完全一致；随机选择不同内容时，块数和总时长会变化。
 - 测试发现 Responses 用量对象缺少当前 OpenAI SDK 要求的 `input_tokens_details.cache_write_tokens`，已补为 `0`。用户重启后已确认修复生效，并对实际 HTTP 响应执行 `Response.model_validate` 严格 Schema 校验，通过。

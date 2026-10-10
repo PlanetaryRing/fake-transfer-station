@@ -128,6 +128,26 @@ Anthropic SDK 的 `base_url` 使用根地址 `http://127.0.0.1:8317`，模型可
 
 客户端配置参考见 [docs/clients.md](docs/clients.md)。
 
+## CPA 原版管理登录页
+
+访问 `http://服务器地址:端口/management.html`，例如：
+
+```text
+http://127.0.0.1:8317/management.html
+```
+
+页面直接使用官方 Management Center **v1.26.0** 的原始发布文件，HTML/JS/CSS 均未修改。文件已随项目提供，启动服务无需下载或构建前端；现有 Dockerfile 也会将它复制到镜像。
+
+本站 `/v8/management`、`/v0/management` 及其子路径统一返回 **403 `remote management is disabled`**，任何密钥都不能登录本站后台。错误显示使用原版前端逻辑，本站不会保存登录输入，也没有真实管理功能。OPTIONS 请求仍正常响应跨域预检。
+
+原版的服务地址选择、浏览器存储和“记住密码”行为均保留。如果将地址改成另一台真实 CPA，连接的是那个服务，本站的拒绝逻辑不适用于它。
+
+来源、版本和哈希见 [static/README.md](fake_transfer_station/static/README.md)，许可证保存在同目录的 `management.LICENSE`，也可通过 `/management.LICENSE` 查看。需要重新下载固定版本时执行：
+
+```sh
+python scripts/fetch_management.py
+```
+
 ## Docker
 
 ```sh
@@ -146,7 +166,7 @@ docker compose up --build -d
 
 测试文件包含配置校验、CPA 源码行为断言、SDK 聚合、真实 TCP 流式间隔、WebSocket 多轮、断连取消等。网络测试只启动本机 Uvicorn 测试服务，不访问外部模型服务。
 
-**当前验证结果：73 项自动化测试通过；配置检查通过。** 模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；本次调速修改需重启该服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
+**当前验证结果：84 项自动化测试通过。** 原版管理页面已通过完整文件哈希、公开访问、HEAD、许可证、真实 HTTP 和任意密钥拒绝测试；尚未做浏览器视觉验证。模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
 
 已启动服务也可以单独复测（读取配置中的本站 Key 和内容池，不输出 Key）：
 

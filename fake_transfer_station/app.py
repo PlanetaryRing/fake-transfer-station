@@ -11,6 +11,7 @@ from .content import ContentEngine
 from .errors import APIError, error_response
 from .models import catalog, gemini_model
 from .routes.generation import router as generation_router
+from .routes.management import router as management_router
 from .routes.websocket import router as websocket_router
 
 
@@ -61,5 +62,6 @@ def create_app(config: Config | None = None, *, config_path: str | Path | None =
         raise APIError("Not Found", 404, "not_found")
 
     app.include_router(generation_router)
+    app.include_router(management_router)
     app.include_router(websocket_router)
     return app
