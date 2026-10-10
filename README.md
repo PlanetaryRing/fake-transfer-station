@@ -128,6 +128,25 @@ Anthropic SDK 的 `base_url` 使用根地址 `http://127.0.0.1:8317`，模型可
 
 客户端配置参考见 [docs/clients.md](docs/clients.md)。
 
+## 查看请求记录
+
+收到模型请求后，服务会在**启动工作目录**的 `logs/requests.jsonl` 追加一行记录，首次请求时自动创建目录及文件。建议始终在项目根目录启动。
+
+```bash
+cat logs/requests.jsonl
+tail -f logs/requests.jsonl
+```
+
+每行是独立的 UTF-8 JSON，包含 UTC 时间、接口路径和完整请求体；中文直接显示，消息内部换行编码成 `\n`，避免一条记录占多行：
+
+```json
+{"time":"2026-10-10T12:30:00Z","path":"/v1/messages","body":{"model":"claude-prank","messages":[{"role":"user","content":"你好"}],"max_tokens":1024}}
+```
+
+HTTP 通过鉴权、完整读取且未超过请求大小上限后记录，发生模型/参数错误也会保留请求；无效 JSON 以原始文本保存。包含生成、token 计数和 compact 接口。WebSocket 每条 `response.create` / `response.append` 在生成前记录，保留客户端原始字段（含预热请求）。
+
+首页、健康检查、模型列表、假管理登录和鉴权失败不记录。认证头、查询参数不写入文件；请求体内容完整保存。文件只追加，不自动轮转或删除。并发写入加锁，磁盘写入失败会在服务终端报错，但不会中止模型回复。Docker Compose 将 `/app/logs` 挂载到宿主机的 `./logs`；日志不提交 Git，也不进入镜像构建上下文。
+
 ## CPA 原版管理登录页
 
 访问 `http://服务器地址:端口/management.html`，例如：
@@ -166,7 +185,7 @@ docker compose up --build -d
 
 测试文件包含配置校验、CPA 源码行为断言、SDK 聚合、真实 TCP 流式间隔、WebSocket 多轮、断连取消等。网络测试只启动本机 Uvicorn 测试服务，不访问外部模型服务。
 
-**当前验证结果：84 项自动化测试通过。** 原版管理页面已通过完整文件哈希、公开访问、HEAD、许可证、真实 HTTP 和任意密钥拒绝测试；尚未做浏览器视觉验证。模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
+**当前验证结果：97 项自动化测试通过。** 请求日志已通过 HTTP/WebSocket 原文、并发追加、中文、非模型接口排除、认证信息排除及写入失败测试。原版管理页面已通过完整文件哈希、公开访问、HEAD、许可证、真实 HTTP 和任意密钥拒绝测试；尚未做浏览器视觉验证。模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
 
 已启动服务也可以单独复测（读取配置中的本站 Key 和内容池，不输出 Key）：
 

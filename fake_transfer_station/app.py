@@ -10,6 +10,7 @@ from .config import Config, load_config
 from .content import ContentEngine
 from .errors import APIError, error_response
 from .models import catalog, gemini_model
+from .request_log import RequestRecorder
 from .routes.generation import router as generation_router
 from .routes.management import router as management_router
 from .routes.websocket import router as websocket_router
@@ -24,6 +25,7 @@ def create_app(config: Config | None = None, *, config_path: str | Path | None =
     app = FastAPI(title="CLI Proxy API", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.config = config
     app.state.engine = ContentEngine(config)
+    app.state.request_recorder = RequestRecorder()
     app.add_middleware(CPAMiddleware, keys=config.access.api_keys)
     app.add_exception_handler(APIError, error_response)
 

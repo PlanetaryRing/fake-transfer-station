@@ -14,6 +14,20 @@ TEXT = "  /\\_/\\\n ( 奶龙😄 )\r\n  > ^ <\n"
 
 
 @pytest.fixture
+def request_log_path(tmp_path, monkeypatch):
+    from fake_transfer_station import request_log
+
+    path = tmp_path / "logs" / "requests.jsonl"
+    monkeypatch.setattr(request_log, "LOG_PATH", path)
+    return path
+
+
+@pytest.fixture(autouse=True)
+def isolate_request_logs(request_log_path):
+    """Keep every test's request contents out of the operator's real logs."""
+
+
+@pytest.fixture
 def config():
     return Config.model_validate({
         "access": {"api-keys": ["test-key", "second-key"]},

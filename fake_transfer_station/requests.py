@@ -34,6 +34,7 @@ async def read_payload(request: Request) -> dict:
         raw.extend(part)
         if len(raw) > limit:
             raise APIError("Request body too large", 413)
+    await request.app.state.request_recorder.record(request.url.path, raw)
     return parse_json(raw)
 
 

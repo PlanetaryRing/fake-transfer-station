@@ -79,13 +79,15 @@ Codex 返回 `models`，含 slug、上下文长度、指令模板及必要的 nu
 - CPA 的图像、音频、视频、Realtime、Interactions、Alpha Search、Home、OAuth 尚未实现；未注册路径返回 404。
 - 管理页面直接分发官方 Management Center v1.26.0 发布文件；所有本站管理 API 固定拒绝，未实现真实管理操作。前端保留原版的浏览器存储和服务器地址选择行为，不保证填写另一台真实 CPA 的地址时也无法登录。来源和 SHA-256 见 `fake_transfer_station/static/README.md`。
 - CORS 沿用 CPA 的通配方式，暴露本服务实际使用的请求 ID 头；未复刻 CPA 全部版本与内部追踪头。
+- 模型接口请求体追加到启动工作目录的 `logs/requests.jsonl`，包含 UTC 时间、路径和完整请求体；HTTP 在完整读取后、参数/模型验证前记录，WebSocket 记录 create/append 原始输入。无会话归组、无响应回放，日志不包含请求头及查询参数。鉴权失败、超出读取上限及非模型接口不记录。日志只追加，Docker Compose 持久化到宿主机 `./logs`。
 
 ## 验证状态
 
 源码行为已用于编写鉴权和目录断言，响应类型参考已安装 SDK。
 
 - `python -m fake_transfer_station --check-config`：通过，3 个模型、1 个内容池。
-- `python -m pytest -q`：**84 passed**，包含真实本地 TCP 服务、SDK 聚合、WebSocket、tokens/s 调度及断连取消。调速修改新增模型独立速率、偏移边界、快慢抽样、零偏移、别名映射和请求快照测试；确定性时钟测试验证波动速度及累计 token 计费一致性。
+- `python -m pytest -q`：**97 passed**，包含真实本地 TCP 服务、SDK 聚合、WebSocket、tokens/s 调度及断连取消。调速修改新增模型独立速率、偏移边界、快慢抽样、零偏移、别名映射和请求快照测试；确定性时钟测试验证波动速度及累计 token 计费一致性。
+- 请求日志：HTTP 各协议原文、WebSocket 多轮、中文/无效 JSON、并发追加、排除非模型接口与认证头、写入失败不影响回复等测试通过。
 - 管理页面：官方发布 SHA-256 校验通过，HTTP 返回的文件字节与官方资产一致；公开访问、HEAD、许可证、v8/v0 多方法及多种密钥固定拒绝测试通过。未启动浏览器验证视觉及点击交互。
 - `python -m tests.live_smoke --config config.example.yaml`：已针对用户启动的 `127.0.0.1:8317` 完成服务健康、鉴权、模型目录、错误响应、Chat/Completions、Responses、Messages、Gemini、compact、Codex 别名及 WebSocket 预热续接检查。
 - 重启后再次完成全部现有服务 smoke 检查。此次 Chat 流收到 51 个正文块，首块到末块约 4.68 秒，正文与配置内容池中的某一项完全一致；随机选择不同内容时，块数和总时长会变化。

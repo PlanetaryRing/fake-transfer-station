@@ -72,6 +72,8 @@ async def websocket_responses(socket: WebSocket):
                     return
                 payload = parse_json(raw)
                 kind = payload.get("type")
+                if kind in ("response.create", "response.append"):
+                    await socket.app.state.request_recorder.record(socket.url.path, raw)
                 if kind == "response.interrupt":
                     # Stop at once, then allow a new full request on this socket.
                     # No invented upstream steering/acknowledgement events.

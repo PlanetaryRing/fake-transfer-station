@@ -13,6 +13,9 @@ services:
         source: ./contents
         target: /app/contents
         read_only: true
+      - type: bind
+        source: ./logs
+        target: /app/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8317/healthz', timeout=3)"]
