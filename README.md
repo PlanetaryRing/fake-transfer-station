@@ -86,6 +86,54 @@ prank:
 - 内容文件启动时加载；配置与内容修改后重启生效。
 - 示例 `dragon.txt` 是示意小龙字符画，可以直接替换为你自己的奶龙字符画。
 
+## 自定义思考文本
+
+**默认关闭**，只有请求明确启用思考才输出。给内容池中每条回复配置独立的 `thinking.items`：先按原权重抽回复，再从这条回复绑定的思考候选中按权重抽一份。一次请求选定后不再重抽。
+
+```yaml
+- id: dragon
+  text: "奶龙来了！"
+  weight: 3
+  thinking:
+    items:
+      - text: "正在认真分析……决定让奶龙来回答。"
+        weight: 2
+      - file: "./contents/thinking/dragon.txt"
+        weight: 1
+```
+
+可运行的完整示例见 `config.thinking.example.yaml`：
+
+```bash
+python -m fake_transfer_station --config config.thinking.example.yaml
+```
+
+已有配置可只添加 `thinking`，每项 `text/file` 二选一、权重大于零、列表非空。没配置思考的回复，即使请求启用思考也只输出正文。配置及文件重启生效。
+
+### 请求开关
+
+| 接口/形式 | 启用示例 | 关闭示例 |
+|---|---|---|
+| Chat Completions | `"reasoning_effort": "high"` | `"reasoning_effort": "none"` |
+| Responses / WebSocket | `"reasoning": {"effort": "high"}` | `"reasoning": {"effort": "none"}` |
+| Anthropic | `"thinking": {"type": "enabled", "budget_tokens": 1024}` 或 `"thinking": {"type": "adaptive"}` | `"thinking": {"type": "disabled"}` |
+| CPA 后缀 | `"model": "gpt-prank(high)"` | `"model": "gpt-prank(none)"` |
+| Gemini | `"generationConfig": {"thinkingConfig": {"thinkingBudget": 1024, "includeThoughts": true}}` | `thinkingBudget: 0` 或 `includeThoughts: false` |
+
+支持强度 `minimal/low/medium/high/xhigh/max/ultra/auto`，`none` 禁用；强度只控制开关，不改变预设思考长度。Anthropic 可附加 `output_config.effort`；Gemini 也支持 `thinkingLevel`（大小写均可）或 `thinkingBudget: -1`。仅 `includeThoughts: true` 不启用思考。
+
+请求体开关优先于模型后缀；请求体中多个开关冲突时显式禁用优先；非法值返回 400。未提供开关默认关闭，每轮请求单独判断。compact 与 WebSocket 预热不输出思考；传统 Completions 仍只输出正文。
+
+### 输出与速度
+
+- Chat 使用常见扩展 `reasoning_content`；客户端是否显示独立思考区域取决于该客户端支持。
+- Responses / WebSocket 使用 `reasoning` 输出项、`response.reasoning_summary_*` 事件，正文项移到索引 1。
+- Anthropic 使用 `thinking` 块、`thinking_delta` 及 `signature_delta`；签名是本站 `prank_…` 模拟标记，不是官方有效签名。
+- Gemini 使用 `thought: true` 的文本部分；思考始终先于正文。
+- 思考沿用模型的 tokens/s、偏移量和分块大小；首字延迟仅在思考开始前执行一次，正文接续输出。
+- 思考和正文分别按 UTF-8 字节数 / 4 向上取整，再相加作为总输出 token。Responses/Chat 的用量详情及 Gemini 的 `thoughtsTokenCount` 提供思考 token 数；Anthropic `output_tokens` 包含两者。
+- 这里输出的是配置中的模拟思考文本，不进行真实推理。请求日志继续记录原始请求体。
+
 ## API Key 与模型
 
 `access.api-keys` 配置本站 Key，支持多个。CPA 风格的鉴权位置依次是：
@@ -185,7 +233,7 @@ docker compose up --build -d
 
 测试文件包含配置校验、CPA 源码行为断言、SDK 聚合、真实 TCP 流式间隔、WebSocket 多轮、断连取消等。网络测试只启动本机 Uvicorn 测试服务，不访问外部模型服务。
 
-**当前验证结果：97 项自动化测试通过。** 请求日志已通过 HTTP/WebSocket 原文、并发追加、中文、非模型接口排除、认证信息排除及写入失败测试。原版管理页面已通过完整文件哈希、公开访问、HEAD、许可证、真实 HTTP 和任意密钥拒绝测试；尚未做浏览器视觉验证。模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
+**当前验证结果：135 项自动化测试通过。** 思考功能已验证默认关闭、开关优先级、绑定加权抽样、文件加载、各协议流式/非流式、Responses 事件 Schema、OpenAI/Anthropic SDK 聚合、WebSocket、用量、共享速率与取消。请求日志已通过 HTTP/WebSocket 原文、并发追加、中文、非模型接口排除、认证信息排除及写入失败测试。原版管理页面已通过完整文件哈希、公开访问、HEAD、许可证、真实 HTTP 和任意密钥拒绝测试；尚未做浏览器视觉验证。模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
 
 已启动服务也可以单独复测（读取配置中的本站 Key 和内容池，不输出 Key）：
 
@@ -197,7 +245,7 @@ docker compose up --build -d
 
 ## 行为说明
 
-- 请求中的 prompts、tools、采样、推理和结构化输出参数不会改变预设文本。
+- 请求中的 prompts、tools、采样和结构化输出参数不会改变预设正文；推理设置仅控制是否输出绑定的预设思考文本。
 - `max_tokens`、`max_output_tokens` 和 stop 参数不截断字符画；生成接口始终输出完整选中内容。
 - Token 用量是 UTF-8 字节数除以 4 向上取整的模拟值，不是官方 tokenizer 结果。
 - WebSocket 仅维护当前连接的上一轮 ID 和模型，HTTP Responses 不持久化会话。

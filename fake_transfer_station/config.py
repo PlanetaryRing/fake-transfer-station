@@ -67,7 +67,7 @@ class ResolvedStreaming(Speed, Streaming):
     """A request-local snapshot with all framing settings resolved."""
 
 
-class ContentItem(Settings):
+class TextItem(Settings):
     id: str | None = None
     text: str | None = None
     file: str | None = None
@@ -80,6 +80,14 @@ class ContentItem(Settings):
         if self.text == "" or self.file == "":
             raise ValueError("content source must not be empty")
         return self
+
+
+class ThinkingPool(Settings):
+    items: list[TextItem] = Field(min_length=1)
+
+
+class ContentItem(TextItem):
+    thinking: ThinkingPool | None = None
 
 
 class ContentPool(Settings):
@@ -181,16 +189,20 @@ def load_config(path: str | Path) -> Config:
     config = Config.model_validate(raw)
     for pool_name, pool in config.prank.content_pools.items():
         for index, item in enumerate(pool.items):
-            if item.file is not None:
-                source = path.parent / item.file
-                try:
-                    # newline="" preserves the artwork exactly, including CRLF.
-                    with source.open(encoding="utf-8-sig", newline="") as handle:
-                        text = handle.read()
-                except (OSError, UnicodeError) as exc:
-                    raise ValueError(f"content pool {pool_name}, item {index}: {exc}") from exc
-                if not text:
-                    raise ValueError(f"content pool {pool_name}, item {index}: empty file {source}")
-                item.text = text
-                item.file = None
+            sources = [(f"content pool {pool_name}, item {index}", item)]
+            if item.thinking:
+                sources.extend((f"content pool {pool_name}, item {index}, thinking {i}", thought)
+                               for i, thought in enumerate(item.thinking.items))
+            for location, entry in sources:
+                if entry.file is not None:
+                    source = path.parent / entry.file
+                    try:
+                        with source.open(encoding="utf-8-sig", newline="") as handle:
+                            text = handle.read()
+                    except (OSError, UnicodeError) as exc:
+                        raise ValueError(f"{location}: {exc}") from exc
+                    if not text:
+                        raise ValueError(f"{location}: empty file {source}")
+                    entry.text = text
+                    entry.file = None
     return config

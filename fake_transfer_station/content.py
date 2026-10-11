@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from .config import Config, Model, ResolvedStreaming
 from .errors import APIError
+from .thinking import requested_effort
 
 CLAUDE_PREFIX = "claude-fable-5-dd-"
 
@@ -37,9 +38,21 @@ class Generation:
     id: str
     message_id: str
     created: int
+    thinking_text: str = ""
+    reasoning_effort: str | None = None
 
-    async def chunks(self):
-        await asyncio.sleep(self.settings.initial_delay_ms / 1000)
+    @property
+    def reasoning_tokens(self) -> int:
+        return estimate_tokens(self.thinking_text)
+
+    @property
+    def total_output_tokens(self) -> int:
+        return self.output_tokens + self.reasoning_tokens
+
+    async def chunks(self, *, thinking: bool = False):
+        source = self.thinking_text if thinking else self.text
+        if thinking or not self.thinking_text:
+            await asyncio.sleep(self.settings.initial_delay_ms / 1000)
         deadline = time.monotonic()
         emitted_bytes = 0
         previous_tokens = 0
@@ -48,14 +61,14 @@ class Generation:
         # Per-iterator randomness; concurrent requests do not share pacing state
         # or consume the content-selection RNG.
         rng = random.SystemRandom() if rate and jitter else None
-        for offset in range(0, len(self.text), self.settings.chunk_size):
-            text = self.text[offset:offset + self.settings.chunk_size]
+        for offset in range(0, len(source), self.settings.chunk_size):
+            text = source[offset:offset + self.settings.chunk_size]
             emitted_bytes += len(text.encode("utf-8"))
             # Carry fractional estimated tokens across chunks; rounding each chunk
             # would make the rate depend on chunk_size. Round only at the end,
             # matching the output_tokens returned in the final usage object.
             tokens = emitted_bytes / 4
-            if offset + len(text) == len(self.text):
+            if offset + len(text) == len(source):
                 tokens = math.ceil(tokens)
             if rate:
                 block_rate = rng.uniform(rate - jitter, rate + jitter) if rng else rate
@@ -67,13 +80,16 @@ class Generation:
             yield text
 
     def chat_usage(self) -> dict:
-        return {"prompt_tokens": self.input_tokens, "completion_tokens": self.output_tokens,
-                "total_tokens": self.input_tokens + self.output_tokens}
+        result = {"prompt_tokens": self.input_tokens, "completion_tokens": self.total_output_tokens,
+                  "total_tokens": self.input_tokens + self.total_output_tokens}
+        if self.thinking_text:
+            result["completion_tokens_details"] = {"reasoning_tokens": self.reasoning_tokens}
+        return result
 
     def response_usage(self) -> dict:
         return {"input_tokens": self.input_tokens, "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
-                "output_tokens": self.output_tokens, "output_tokens_details": {"reasoning_tokens": 0},
-                "total_tokens": self.input_tokens + self.output_tokens}
+                "output_tokens": self.total_output_tokens, "output_tokens_details": {"reasoning_tokens": self.reasoning_tokens},
+                "total_tokens": self.input_tokens + self.total_output_tokens}
 
 
 class ContentEngine:
@@ -83,6 +99,9 @@ class ContentEngine:
         self.models = {name: model for model in config.prank.models for name in [model.id, *model.aliases]}
         if any(item.text is None for pool in config.prank.content_pools.values() for item in pool.items):
             raise ValueError("content files must be loaded with load_config before creating the application")
+        if any(thought.text is None for pool in config.prank.content_pools.values() for item in pool.items
+               if item.thinking for thought in item.thinking.items):
+            raise ValueError("thinking files must be loaded with load_config before creating the application")
         for model in config.prank.models:
             for name in [model.id, *model.aliases]:
                 encoded = claude_id(name)
@@ -103,14 +122,20 @@ class ContentEngine:
             return self.models[base]
         raise APIError(f"unknown provider for model {name}", 502, "server_error")
 
-    def generate(self, payload: dict, *, prewarm: bool = False) -> Generation:
+    def generate(self, payload: dict, *, prewarm: bool = False, allow_thinking: bool = True) -> Generation:
         name = payload.get("model")
         model = self.resolve(name)
+        level = requested_effort(payload)
         settings = ResolvedStreaming.model_validate({**self.config.prank.streaming.model_dump(),
                                             **model.streaming.model_dump(exclude_none=True)})
         pool = self.config.prank.content_pools[model.content_pool or self.config.prank.default_content_pool]
-        text = "" if prewarm else self.rng.choices(pool.items, weights=[item.weight for item in pool.items], k=1)[0].text
+        selected = None if prewarm else self.rng.choices(pool.items, weights=[item.weight for item in pool.items], k=1)[0]
+        text = selected.text if selected else ""
+        thought = ""
+        if selected and selected.thinking and allow_thinking and level not in (None, "none"):
+            items = selected.thinking.items
+            thought = self.rng.choices(items, weights=[item.weight for item in items], k=1)[0].text
         if text is None:
             raise ValueError("content files must be loaded before creating the application")
         return Generation(name.strip(), text, settings, input_tokens(payload), estimate_tokens(text),
-                          uuid4().hex, "msg_" + uuid4().hex, int(time.time()))
+                          uuid4().hex, "msg_" + uuid4().hex, int(time.time()), thought, level)

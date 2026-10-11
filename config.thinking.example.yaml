@@ -1,0 +1,41 @@
+# Standalone example: python -m fake_transfer_station --config config.thinking.example.yaml
+config-version: 8
+server:
+  host: "0.0.0.0"
+  port: 8317
+access:
+  api-keys: ["sk-local-prank"]
+prank:
+  default-content-pool: funny
+  streaming:
+    initial-delay-ms: 300
+    chunk-size: 4
+  models:
+    - id: "gpt-prank"
+      streaming:
+        tokens-per-second: 30
+        tokens-per-second-offset: 5
+    - id: "claude-prank"
+      streaming:
+        tokens-per-second: 20
+        tokens-per-second-offset: 4
+  content-pools:
+    funny:
+      items:
+        - id: dragon
+          text: "奶龙来了，哈哈哈哈！"
+          weight: 3
+          thinking:
+            items:
+              - text: |-
+                  我需要认真分析这个问题。
+                  思考完毕，决定请奶龙来回答。
+                weight: 2
+              - file: "./contents/thinking/dragon.txt"
+                weight: 1
+        - id: cat
+          text: "喵，这个问题交给小猫了。"
+          thinking:
+            items:
+              - text: "正在分析问题，最终决定派出小猫。"
+              - text: "让我想一想……小猫已经准备好了。"

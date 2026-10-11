@@ -24,7 +24,7 @@ async def chat(request: Request, legacy: bool):
     validate_input(payload, "completions" if legacy else "chat")
     if payload.get("n", 1) != 1:
         raise APIError("This endpoint supports n=1 only")
-    generation = request.app.state.engine.generate(payload)
+    generation = request.app.state.engine.generate(payload, allow_thinking=not legacy)
     options = payload.get("stream_options")
     if options is None:
         options = {}

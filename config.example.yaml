@@ -27,35 +27,221 @@ prank:
     keepalive-seconds: 15
 
   # IDs are arbitrary public names, not real model/provider connections.
+
   models:
-    - id: "gpt-prank"
-      display-name: "GPT Prank"
+    # ========================================
+    # OpenAI - GPT-6 Series
+    # ========================================
+
+    - id: "gpt-6-astra"
+      display-name: "GPT-6 Astra"
       owned-by: "openai"
-      context-length: 128000
-      max-output-tokens: 16384
-      aliases: ["gpt-prank-latest"]
+      context-length: 1050000
+      max-output-tokens: 128000
       streaming:
-        # Each block samples 25–35 estimated tokens/s. Offset is absolute, not %.
-        tokens-per-second: 30
+        initial-delay-ms: 2000
+        chunk-size: 3
+        tokens-per-second: 45
+        tokens-per-second-offset: 8
+
+    - id: "gpt-6.1-sol"
+      display-name: "GPT-6.1 Sol"
+      owned-by: "openai"
+      context-length: 1050000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 1100
+        tokens-per-second: 90
+        tokens-per-second-offset: 14
+
+    - id: "gpt-6-sol"
+      display-name: "GPT-6 Sol"
+      owned-by: "openai"
+      context-length: 1050000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 1400
+        tokens-per-second: 75
+        tokens-per-second-offset: 12
+
+    - id: "gpt-6-luna"
+      display-name: "GPT-6 Luna"
+      owned-by: "openai"
+      context-length: 1050000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 250
+        tokens-per-second: 180
+        tokens-per-second-offset: 25
+
+    # ========================================
+    # OpenAI - GPT-5.6 Series
+    # ========================================
+
+    - id: "gpt-5.6-sol"
+      display-name: "GPT-5.6 Sol"
+      owned-by: "openai"
+      context-length: 1050000
+      max-output-tokens: 128000
+      aliases: ["gpt-5.6"]
+      streaming:
+        initial-delay-ms: 950
+        tokens-per-second: 65
+        tokens-per-second-offset: 10
+
+    - id: "gpt-5.6-terra"
+      display-name: "GPT-5.6 Terra"
+      owned-by: "openai"
+      context-length: 1050000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 450
+        tokens-per-second: 115
+        tokens-per-second-offset: 18
+
+    - id: "gpt-5.6-luna"
+      display-name: "GPT-5.6 Luna"
+      owned-by: "openai"
+      context-length: 1050000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 180
+        tokens-per-second: 200
+        tokens-per-second-offset: 30
+
+    # ========================================
+    # Anthropic - Claude 5 Series
+    # ========================================
+
+    - id: "claude-fable-5-1"
+      display-name: "Claude Fable 5.1"
+      owned-by: "anthropic"
+      context-length: 1000000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 2600
+        chunk-size: 2
+        tokens-per-second: 28
         tokens-per-second-offset: 5
 
-    - id: "claude-prank"
-      display-name: "Claude Prank"
+    - id: "claude-opus-5-5"
+      display-name: "Claude Opus 5.5"
       owned-by: "anthropic"
-      context-length: 200000
-      max-output-tokens: 16384
-      content-pool: funny
+      context-length: 1000000
+      max-output-tokens: 128000
       streaming:
+        initial-delay-ms: 1600
         chunk-size: 2
-        tokens-per-second: 20
-        tokens-per-second-offset: 4
+        tokens-per-second: 48
+        tokens-per-second-offset: 8
 
-    - id: "gemini-prank"
-      display-name: "Gemini Prank"
-      owned-by: "google"
+    - id: "claude-sonnet-5-5"
+      display-name: "Claude Sonnet 5.5"
+      owned-by: "anthropic"
+      context-length: 1000000
+      max-output-tokens: 128000
       streaming:
-        tokens-per-second: 45
-        tokens-per-second-offset: 10
+        initial-delay-ms: 650
+        chunk-size: 3
+        tokens-per-second: 85
+        tokens-per-second-offset: 12
+
+    - id: "claude-haiku-5-5"
+      display-name: "Claude Haiku 5.5"
+      owned-by: "anthropic"
+      context-length: 1000000
+      max-output-tokens: 128000
+      streaming:
+        initial-delay-ms: 180
+        chunk-size: 6
+        tokens-per-second: 170
+        tokens-per-second-offset: 25
+
+    # ========================================
+    # Google - Gemini 3 Series
+    # ========================================
+
+    - id: "gemini-3.8-flash"
+      display-name: "Gemini 3.8 Flash"
+      owned-by: "google"
+      context-length: 1048576
+      max-output-tokens: 65536
+      streaming:
+        initial-delay-ms: 280
+        tokens-per-second: 170
+        tokens-per-second-offset: 25
+
+    - id: "gemini-3.6-flash"
+      display-name: "Gemini 3.6 Flash"
+      owned-by: "google"
+      context-length: 1048576
+      max-output-tokens: 65536
+      streaming:
+        initial-delay-ms: 320
+        tokens-per-second: 140
+        tokens-per-second-offset: 20
+
+    - id: "gemini-3.5-flash-lite"
+      display-name: "Gemini 3.5 Flash-Lite"
+      owned-by: "google"
+      context-length: 1048576
+      max-output-tokens: 65536
+      streaming:
+        initial-delay-ms: 130
+        tokens-per-second: 225
+        tokens-per-second-offset: 35
+
+    - id: "gemini-3.1-pro-preview"
+      display-name: "Gemini 3.1 Pro"
+      owned-by: "google"
+      context-length: 1048576
+      max-output-tokens: 65536
+      streaming:
+        initial-delay-ms: 1300
+        tokens-per-second: 65
+        tokens-per-second-offset: 12
+
+    - id: "gemini-3.1-flash-lite"
+      display-name: "Gemini 3.1 Flash-Lite"
+      owned-by: "google"
+      context-length: 1048576
+      max-output-tokens: 65536
+      streaming:
+        initial-delay-ms: 150
+        tokens-per-second: 200
+        tokens-per-second-offset: 30
+
+    # ========================================
+    # xAI - Grok 4 Series
+    # ========================================
+
+    - id: "grok-4.7"
+      display-name: "Grok 4.7"
+      owned-by: "xai"
+      context-length: 500000
+      max-output-tokens: 32768
+      streaming:
+        initial-delay-ms: 750
+        tokens-per-second: 90
+        tokens-per-second-offset: 15
+
+    - id: "grok-4.6"
+      display-name: "Grok 4.6"
+      owned-by: "xai"
+      context-length: 500000
+      max-output-tokens: 32768
+      streaming:
+        initial-delay-ms: 850
+        tokens-per-second: 85
+        tokens-per-second-offset: 12
+
+    - id: "grok-4.5"
+      display-name: "Grok 4.5"
+      owned-by: "xai"
+      streaming:
+        initial-delay-ms: 600
+        tokens-per-second: 80
+        tokens-per-second-offset: 12
 
   content-pools:
     funny:
@@ -64,16 +250,3 @@ prank:
         - id: dragon
           file: "./contents/dragon.txt"
           weight: 3
-        - id: cat
-          weight: 1
-          text: |-
-            ```text
-             /\_/\
-            ( o.o )
-             > ^ <
-            ```
-            模型正在摸鱼，请欣赏小猫。
-        - id: surprise
-          text: |-
-            正在认真思考……
-            思考完成：今天适合开怀大笑！

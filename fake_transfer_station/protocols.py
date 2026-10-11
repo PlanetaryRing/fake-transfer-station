@@ -12,6 +12,8 @@ def chat_completion(g: Generation, *, legacy: bool = False) -> dict:
         choice["text"] = g.text
     else:
         choice["message"] = {"role": "assistant", "content": g.text, "refusal": None}
+        if g.thinking_text:
+            choice["message"]["reasoning_content"] = g.thinking_text
     return {"id": ("cmpl-" if legacy else "chatcmpl-") + g.id,
             "object": "text_completion" if legacy else "chat.completion",
             "created": g.created, "model": g.model, "choices": [choice], "usage": g.chat_usage()}
@@ -29,6 +31,9 @@ async def chat_frames(g: Generation, *, legacy: bool = False, include_usage: boo
 
     if not legacy:
         yield encode_sse(chunk({"role": "assistant", "content": ""}))
+        if g.thinking_text:
+            async for text in g.chunks(thinking=True):
+                yield encode_sse(chunk({"reasoning_content": text}))
     async for text in g.chunks():
         yield encode_sse(chunk(text if legacy else {"content": text}))
     yield encode_sse(chunk("" if legacy else {}, "stop"))
@@ -38,10 +43,13 @@ async def chat_frames(g: Generation, *, legacy: bool = False, include_usage: boo
 
 
 def anthropic_message(g: Generation, *, start: bool = False) -> dict:
+    blocks = [{"type": "text", "text": g.text}]
+    if g.thinking_text:
+        blocks.insert(0, {"type": "thinking", "thinking": g.thinking_text, "signature": "prank_" + g.id})
     return {"id": g.message_id, "type": "message", "role": "assistant", "model": g.model,
-            "content": [] if start else [{"type": "text", "text": g.text}],
+            "content": [] if start else blocks,
             "stop_reason": None if start else "end_turn", "stop_sequence": None,
-            "usage": {"input_tokens": g.input_tokens, "output_tokens": 0 if start else g.output_tokens,
+            "usage": {"input_tokens": g.input_tokens, "output_tokens": 0 if start else g.total_output_tokens,
                       "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}
 
 
@@ -50,12 +58,20 @@ async def anthropic_frames(g: Generation):
         return encode_sse({"type": kind, **fields}, kind)
 
     yield event("message_start", message=anthropic_message(g, start=True))
-    yield event("content_block_start", index=0, content_block={"type": "text", "text": ""})
+    index = 0
+    if g.thinking_text:
+        yield event("content_block_start", index=0, content_block={"type": "thinking", "thinking": "", "signature": ""})
+        async for text in g.chunks(thinking=True):
+            yield event("content_block_delta", index=0, delta={"type": "thinking_delta", "thinking": text})
+        yield event("content_block_delta", index=0, delta={"type": "signature_delta", "signature": "prank_" + g.id})
+        yield event("content_block_stop", index=0)
+        index = 1
+    yield event("content_block_start", index=index, content_block={"type": "text", "text": ""})
     async for text in g.chunks():
-        yield event("content_block_delta", index=0, delta={"type": "text_delta", "text": text})
-    yield event("content_block_stop", index=0)
+        yield event("content_block_delta", index=index, delta={"type": "text_delta", "text": text})
+    yield event("content_block_stop", index=index)
     yield event("message_delta", delta={"stop_reason": "end_turn", "stop_sequence": None},
-                usage={"output_tokens": g.output_tokens})
+                usage={"output_tokens": g.total_output_tokens})
     yield event("message_stop")
 
 
@@ -69,15 +85,23 @@ def response_item(g: Generation, *, start: bool = False) -> dict:
             "content": [] if start else [output_text(g.text)]}
 
 
+def reasoning_item(g: Generation, *, start: bool = False) -> dict:
+    return {"id": "rs_" + g.id, "type": "reasoning", "status": "in_progress" if start else "completed",
+            "summary": [] if start else [{"type": "summary_text", "text": g.thinking_text}]}
+
+
 def response_object(g: Generation, *, start: bool = False, prewarm: bool = False) -> dict:
+    output = ([reasoning_item(g)] if g.thinking_text else []) + [response_item(g)]
     return {"id": "resp_" + g.id, "object": "response", "created_at": g.created,
             "completed_at": None if start else int(time.time()),
             "status": "in_progress" if start else "completed", "model": g.model,
             "error": None, "incomplete_details": None, "instructions": None,
-            "output": [] if start or prewarm else [response_item(g)],
+            "output": [] if start or prewarm else output,
             "parallel_tool_calls": False, "tool_choice": "auto", "tools": [],
             "temperature": 1.0, "top_p": 1.0, "metadata": {}, "store": False,
-            "text": {"format": {"type": "text"}}, "reasoning": {"effort": None, "summary": None},
+            "text": {"format": {"type": "text"}},
+            "reasoning": {"effort": g.reasoning_effort if g.reasoning_effort != "auto" else None,
+                          "summary": "auto" if g.thinking_text else None},
             "usage": None if start else g.response_usage()}
 
 
@@ -93,14 +117,27 @@ async def response_events(g: Generation, *, prewarm: bool = False):
     yield event("response.created", response=response_object(g, start=True))
     yield event("response.in_progress", response=response_object(g, start=True))
     if not prewarm:
-        yield event("response.output_item.added", output_index=0, item=response_item(g, start=True))
-        location = {"item_id": g.message_id, "output_index": 0, "content_index": 0}
+        index = 0
+        if g.thinking_text:
+            yield event("response.output_item.added", output_index=0, item=reasoning_item(g, start=True))
+            reasoning_location = {"item_id": "rs_" + g.id, "output_index": 0, "summary_index": 0}
+            yield event("response.reasoning_summary_part.added", **reasoning_location,
+                        part={"type": "summary_text", "text": ""})
+            async for text in g.chunks(thinking=True):
+                yield event("response.reasoning_summary_text.delta", **reasoning_location, delta=text)
+            yield event("response.reasoning_summary_text.done", **reasoning_location, text=g.thinking_text)
+            yield event("response.reasoning_summary_part.done", **reasoning_location,
+                        part={"type": "summary_text", "text": g.thinking_text})
+            yield event("response.output_item.done", output_index=0, item=reasoning_item(g))
+            index = 1
+        yield event("response.output_item.added", output_index=index, item=response_item(g, start=True))
+        location = {"item_id": g.message_id, "output_index": index, "content_index": 0}
         yield event("response.content_part.added", **location, part=output_text(""))
         async for text in g.chunks():
             yield event("response.output_text.delta", **location, delta=text, logprobs=[])
         yield event("response.output_text.done", **location, text=g.text, logprobs=[])
         yield event("response.content_part.done", **location, part=output_text(g.text))
-        yield event("response.output_item.done", output_index=0, item=response_item(g))
+        yield event("response.output_item.done", output_index=index, item=response_item(g))
     yield event("response.completed", response=response_object(g, prewarm=prewarm))
 
 
@@ -109,17 +146,27 @@ async def response_frames(g: Generation):
         yield encode_sse(event, event["type"])
 
 
-def gemini_response(g: Generation, text: str | None = None, *, final: bool = True) -> dict:
-    candidate = {"index": 0, "content": {"role": "model", "parts": [{"text": g.text if text is None else text}]}}
+def gemini_response(g: Generation, text: str | None = None, *, final: bool = True, thinking: bool = False) -> dict:
+    parts = [{"text": g.text if text is None else text}]
+    if thinking:
+        parts[0]["thought"] = True
+    elif text is None and g.thinking_text:
+        parts.insert(0, {"text": g.thinking_text, "thought": True})
+    candidate = {"index": 0, "content": {"role": "model", "parts": parts}}
     result = {"candidates": [candidate], "modelVersion": g.model, "responseId": "resp_" + g.id}
     if final:
         candidate["finishReason"] = "STOP"
         result["usageMetadata"] = {"promptTokenCount": g.input_tokens, "candidatesTokenCount": g.output_tokens,
-                                   "totalTokenCount": g.input_tokens + g.output_tokens}
+                                   "totalTokenCount": g.input_tokens + g.total_output_tokens}
+        if g.thinking_text:
+            result["usageMetadata"]["thoughtsTokenCount"] = g.reasoning_tokens
     return result
 
 
 async def gemini_frames(g: Generation):
+    if g.thinking_text:
+        async for text in g.chunks(thinking=True):
+            yield encode_sse(gemini_response(g, text, final=False, thinking=True))
     async for text in g.chunks():
         yield encode_sse(gemini_response(g, text, final=False))
     yield encode_sse(gemini_response(g, "", final=True))
