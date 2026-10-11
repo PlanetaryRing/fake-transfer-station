@@ -1,11 +1,12 @@
 """Validated startup configuration. Content files are loaded once per process."""
 
 import math
+import re
 from pathlib import Path
 from typing import Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 
 class Settings(BaseModel):
@@ -71,14 +72,19 @@ class TextItem(Settings):
     id: str | None = None
     text: str | None = None
     file: str | None = None
+    template: str | None = None
     weight: float = Field(default=1, gt=0)
 
     @model_validator(mode="after")
     def exactly_one_source(self) -> Self:
-        if (self.text is None) == (self.file is None):
-            raise ValueError("specify exactly one of text or file")
-        if self.text == "" or self.file == "":
+        if sum(value is not None for value in (self.text, self.file, self.template)) != 1:
+            raise ValueError("specify exactly one of text, file or template")
+        if "" in (self.text, self.file, self.template):
             raise ValueError("content source must not be empty")
+        if self.template is not None:
+            remainder = re.sub(r"\{\{\s*identity\s*\}\}", "", self.template)
+            if "{{" in remainder or "}}" in remainder:
+                raise ValueError("template only supports {{identity}}")
         return self
 
 
@@ -98,6 +104,7 @@ class ContentPool(Settings):
 class Model(Settings):
     id: str = Field(min_length=1)
     display_name: str = ""
+    identity: str | None = None
     owned_by: str = "openai"
     created: int = Field(default=1700000000, ge=0, le=253402300799)
     context_length: int = Field(default=128000, gt=0)
@@ -105,6 +112,15 @@ class Model(Settings):
     aliases: list[str] = Field(default_factory=list)
     content_pool: str | None = None
     streaming: ModelStreaming
+
+    @field_validator("identity")
+    @classmethod
+    def clean_identity(cls, value: str | None) -> str | None:
+        if value is not None:
+            if not value.strip():
+                raise ValueError("identity must not be blank")
+            return value.strip()
+        return value
 
     @field_validator("id")
     @classmethod
@@ -114,11 +130,35 @@ class Model(Settings):
         return value
 
 
+class MatchRule(Settings):
+    id: str = Field(min_length=1)
+    priority: int = 0
+    pattern: str = Field(min_length=1)
+    flags: list[Literal["ignorecase", "multiline", "dotall", "verbose", "ascii"]] = Field(default_factory=list)
+    content_pool: str
+    _regex: re.Pattern = PrivateAttr()
+
+    @model_validator(mode="after")
+    def compile_pattern(self) -> Self:
+        flags = 0
+        for name in self.flags:
+            flags |= getattr(re, name.upper())
+        try:
+            self._regex = re.compile(self.pattern, flags)
+        except (re.error, OverflowError) as exc:
+            raise ValueError(f"rule {self.id}: invalid regex: {exc}") from exc
+        return self
+
+    def matches(self, text: str) -> bool:
+        return self._regex.search(text) is not None
+
+
 class Prank(Settings):
     streaming: Streaming = Field(default_factory=Streaming)
     default_content_pool: str = "funny"
     models: list[Model] = Field(min_length=1)
     content_pools: dict[str, ContentPool]
+    match_rules: list[MatchRule] = Field(default_factory=list)
     max_request_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
 
     @model_validator(mode="after")
@@ -126,6 +166,13 @@ class Prank(Settings):
         if self.default_content_pool not in self.content_pools:
             raise ValueError(f"unknown default content pool: {self.default_content_pool}")
         names: set[str] = set()
+        rule_ids: set[str] = set()
+        for rule in self.match_rules:
+            if rule.id in rule_ids:
+                raise ValueError(f"duplicate rule id: {rule.id}")
+            rule_ids.add(rule.id)
+            if rule.content_pool not in self.content_pools:
+                raise ValueError(f"rule {rule.id}: unknown content pool {rule.content_pool}")
         for model in self.models:
             for name in [model.id, *model.aliases]:
                 if not name or name != name.strip() or name in names:

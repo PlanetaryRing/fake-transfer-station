@@ -1,0 +1,67 @@
+# Run: python -m fake_transfer_station --config config.rules.example.yaml
+config-version: 8
+server:
+  host: "0.0.0.0"
+  port: 8317
+access:
+  api-keys: ["sk-local-prank"]
+prank:
+  default-content-pool: funny
+  models:
+    - id: gpt-6-astra
+      identity: ChatGPT
+      aliases: [my-gpt]
+      streaming:
+        tokens-per-second: 30
+        tokens-per-second-offset: 5
+    - id: claude-opus
+      identity: Claude
+      streaming:
+        tokens-per-second: 20
+        tokens-per-second-offset: 4
+    - id: gemini-prank
+      identity: Gemini
+      streaming:
+        tokens-per-second: 45
+        tokens-per-second-offset: 10
+  match-rules:
+    - id: model-identity
+      priority: 400
+      pattern: '(?:你是谁|你是什么模型|你是哪个模型|你的模型名称|\bwho\s+are\s+you\b|\bwhat\s+model\s+are\s+you\b)'
+      flags: [ignorecase]
+      content-pool: identity-replies
+    - id: arithmetic
+      priority: 300
+      pattern: '^\s*1\s*\+\s*1\s*(?:=\s*[?？]?|[?？])?\s*$'
+      content-pool: arithmetic
+    - id: ping
+      priority: 200
+      pattern: '^\s*ping[.!！?？]?\s*$'
+      flags: [ignorecase]
+      content-pool: ping
+    - id: greeting
+      priority: 100
+      pattern: '^\s*(?:hello|hi|你好|嗨)[,，.!！?？。]*\s*$'
+      flags: [ignorecase]
+      content-pool: greetings
+  content-pools:
+    identity-replies:
+      items:
+        - template: '我是 {{identity}}，有什么可以帮助你的？'
+          weight: 2
+        - template: '你好，我是 {{identity}}。'
+    arithmetic:
+      items:
+        - text: '2'
+    ping:
+      items:
+        - text: pong
+    greetings:
+      items:
+        - text: '你好！有什么可以帮助你的？'
+          weight: 2
+        - text: '你好，请问需要什么帮助？'
+        - text: 'Hello! How can I help you?'
+    funny:
+      items:
+        - file: './contents/dragon.txt'

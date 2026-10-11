@@ -68,6 +68,7 @@ Codex 返回 `models`，含 slug、上下文长度、指令模板及必要的 nu
 ## 模拟行为与已知边界
 
 - 所有模型都生成预设正文。工具定义和多模态输入块作为不透明数据接收，输出为普通文本，不生成工具调用或多模态结果。
+- `prank.match-rules` 按优先级降序匹配最后一条用户文本，同分按配置顺序，首次命中选择内容池。未命中沿用模型/全局默认池。身份模板仅支持 `{{identity}}`，优先使用模型配置，未配置按 gpt-/claude-/gemini- 前缀映射为 ChatGPT/Claude/Gemini。别名解析后取身份，不直接输出模型 ID。完整示例为 `config.rules.example.yaml`。
 - 预设思考支持内容项绑定的加权候选，默认关闭，沿用模型速率及偏移。Chat 使用 `reasoning_content` 扩展；Responses/WebSocket 使用 reasoning summary 事件；Anthropic 使用 thinking 块（本站模拟签名，不是官方签名）；Gemini 使用 thought 部分。传统 Completions、compact 和 WebSocket 预热无思考输出。开关优先级和示例详见 README“自定义思考文本”。
 - 支持未知请求扩展字段；必要包络字段仍做类型校验。`n` 仅支持 1。
 - `compact` 保留用户消息并追加 mock compaction 标记，标记不是真实加密上下文。后续请求可原样带回；服务器不解密或恢复历史。
@@ -87,7 +88,8 @@ Codex 返回 `models`，含 slug、上下文长度、指令模板及必要的 nu
 源码行为已用于编写鉴权和目录断言，响应类型参考已安装 SDK。
 
 - `python -m fake_transfer_station --check-config`：通过，3 个模型、1 个内容池。
-- `python -m pytest -q`：**135 passed**，包含真实本地 TCP 服务、SDK 聚合、WebSocket、tokens/s 调度及断连取消。调速修改新增模型独立速率、偏移边界、快慢抽样、零偏移、别名映射和请求快照测试；确定性时钟测试验证波动速度及累计 token 计费一致性。
+- `python -m pytest -q`：**179 passed**，包含真实本地 TCP 服务、SDK 聚合、WebSocket、tokens/s 调度及断连取消。调速修改新增模型独立速率、偏移边界、快慢抽样、零偏移、别名映射和请求快照测试；确定性时钟测试验证波动速度及累计 token 计费一致性。
+- 匹配规则：身份/问候/ping/算术示例、跨协议最后用户文本提取、同分及高优先级、回落池、加权选择、思考绑定、身份别名及模板渲染、流式/WebSocket 和日志原文测试通过；独立规则配置示例检查通过。
 - 预设思考：默认关闭与显式禁用、绑定加权选择、文件加载、各协议输出、Responses 事件严格 Schema、OpenAI/Anthropic SDK 最终聚合、WebSocket、共享速度/偏移、仅一次首字延迟和取消测试通过。完整思考配置示例检查通过。
 - 请求日志：HTTP 各协议原文、WebSocket 多轮、中文/无效 JSON、并发追加、排除非模型接口与认证头、写入失败不影响回复等测试通过。
 - 管理页面：官方发布 SHA-256 校验通过，HTTP 返回的文件字节与官方资产一致；公开访问、HEAD、许可证、v8/v0 多方法及多种密钥固定拒绝测试通过。未启动浏览器验证视觉及点击交互。

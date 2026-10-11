@@ -36,7 +36,7 @@ Linux / macOS 创建虚拟环境并安装 `requirements.txt` 后，用 `python -
 
 ## 修改内容与速度
 
-编辑 `prank.content-pools`，每项使用 `text` 或 `file` 二选一：
+编辑 `prank.content-pools`，每项使用 `text`、`file` 或身份 `template` 三选一：
 
 ```yaml
 prank:
@@ -85,6 +85,71 @@ prank:
 - 非流式请求立即返回完整文本，不逐块等待。
 - 内容文件启动时加载；配置与内容修改后重启生效。
 - 示例 `dragon.txt` 是示意小龙字符画，可以直接替换为你自己的奶龙字符画。
+
+## 正则匹配回复池与助手身份
+
+完整可运行示例见 `config.rules.example.yaml`，包含身份、1+1、ping 和问候规则：
+
+```bash
+python -m fake_transfer_station --config config.rules.example.yaml
+```
+
+合并到现有配置时，将规则放在 `prank.match-rules`，回复池放在现有 `prank.content-pools` 内：
+
+```yaml
+prank:
+  match-rules:
+    - id: identity
+      priority: 400
+      pattern: '(?:你是谁|你是什么模型|你是哪个模型|\bwho\s+are\s+you\b)'
+      flags: [ignorecase]
+      content-pool: identity-replies
+    - id: arithmetic
+      priority: 300
+      pattern: '^\s*1\s*\+\s*1\s*(?:=\s*[?？]?|[?？])?\s*$'
+      content-pool: arithmetic
+    - id: ping
+      priority: 200
+      pattern: '^\s*ping\s*$'
+      flags: [ignorecase]
+      content-pool: ping
+    - id: greeting
+      priority: 100
+      pattern: '^\s*(?:hello|hi|你好|嗨)[,，.!！?？。]*\s*$'
+      flags: [ignorecase]
+      content-pool: greetings
+  content-pools:
+    identity-replies:
+      items:
+        - template: '我是 {{identity}}，有什么可以帮助你的？'
+          weight: 2
+        - template: '你好，我是 {{identity}}。'
+    arithmetic:
+      items:
+        - text: '2'
+    ping:
+      items:
+        - text: 'pong'
+    greetings:
+      items:
+        - text: '你好！有什么可以帮助你的？'
+        - text: 'Hello! How can I help you?'
+```
+
+此片段需与现有模型和默认内容池合并；不要删除未命中规则时使用的原内容池。
+
+- `priority` 数字越大越先检查；同优先级按 YAML 列表顺序。第一个命中规则决定回复池，再在池内按权重抽一次。
+- 使用 Python `re.search` 语义；`^`、`$` 限定整条文本，`\+` 匹配字面加号。YAML 正则推荐单引号。可选 flags 为 `ignorecase/multiline/dotall/verbose/ascii`，默认大小写敏感。正则启动时编译，非法正则、重复规则 ID、未知池会阻止启动。
+- 只提取请求中最后一条用户消息的文本，同消息多个文本块以换行拼接。系统提示词、助手历史、工具结果、图片不参与匹配。最新用户消息无文本时不会退回更早的问候。
+- Chat/Messages 使用 `messages`，Responses 使用字符串 `input` 或输入列表，Gemini 使用 `contents.parts`，传统 Completions 仅支持字符串 `prompt` 匹配。WebSocket 只检查本次 create/append 输入，不跨请求恢复历史。
+- 无规则、无可匹配文本或全部未命中时，使用模型原 `content-pool`，再回退到全局默认池。compact、token 计数与 WebSocket 预热不触发匹配。
+- 命中回复池后仍使用当前模型的速度/偏移，思考只来自选中回复绑定的候选；未配思考就不输出。日志仍记录原始请求体。
+
+### 身份设置
+
+每个模型可以填写 `identity`，例如在 `gpt-6-astra` 下写 `identity: ChatGPT`，在 `claude-opus` 下写 `identity: Claude`。未配置时按解析后的实际模型 ID 自动映射：`gpt-*` → ChatGPT、`claude-*` → Claude、`gemini-*` → Gemini，其余为“AI 助手”。别名、思考后缀和 CPA 改写 ID 都沿用所指向模型的身份。
+
+只有 `template` 会替换 `{{identity}}`，**不输出模型 ID**，不执行表达式或代码。`text`、`file` 保持原文，字符画中的括号不会被替换。模板渲染后再统计 token 和分块。思考候选同样可使用身份模板。
 
 ## 自定义思考文本
 
@@ -233,7 +298,7 @@ docker compose up --build -d
 
 测试文件包含配置校验、CPA 源码行为断言、SDK 聚合、真实 TCP 流式间隔、WebSocket 多轮、断连取消等。网络测试只启动本机 Uvicorn 测试服务，不访问外部模型服务。
 
-**当前验证结果：135 项自动化测试通过。** 思考功能已验证默认关闭、开关优先级、绑定加权抽样、文件加载、各协议流式/非流式、Responses 事件 Schema、OpenAI/Anthropic SDK 聚合、WebSocket、用量、共享速率与取消。请求日志已通过 HTTP/WebSocket 原文、并发追加、中文、非模型接口排除、认证信息排除及写入失败测试。原版管理页面已通过完整文件哈希、公开访问、HEAD、许可证、真实 HTTP 和任意密钥拒绝测试；尚未做浏览器视觉验证。模型独立速率及偏移已通过快慢抽样、边界校验、别名映射、请求快照、中文/emoji、零偏移匀速及不限速测试；无波动调度已通过本地 TCP 流式测试。之前已对 `127.0.0.1:8317` 完成 OpenAI/Anthropic SDK、Gemini、Codex 路径别名及 WebSocket 验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
+**当前验证结果：179 项自动化测试通过。** 正则规则已验证优先级、同分顺序、跨协议用户文本、回落池、加权抽样、身份模板、别名及思考绑定。思考功能已验证默认关闭、开关优先级、文件加载、各协议流式/非流式、Responses 事件 Schema、OpenAI/Anthropic SDK 聚合、WebSocket、用量、共享速率与取消。请求日志已验证原文、并发追加、认证信息排除及写入失败。管理页面已验证文件哈希和 HTTP 行为，尚未做浏览器视觉验证。此前已对常驻本地服务完成 SDK 与流式检查，本次规则功能在自动化测试服务中验证；源码修改需重启服务生效。实际编程助手客户端、Docker 和反向代理尚未联调。
 
 已启动服务也可以单独复测（读取配置中的本站 Key 和内容池，不输出 Key）：
 
@@ -245,7 +310,7 @@ docker compose up --build -d
 
 ## 行为说明
 
-- 请求中的 prompts、tools、采样和结构化输出参数不会改变预设正文；推理设置仅控制是否输出绑定的预设思考文本。
+- 用户文本可通过正则规则选择预设回复池；tools、采样和结构化输出参数不改变预设正文。推理设置仅控制是否输出绑定的预设思考文本。
 - `max_tokens`、`max_output_tokens` 和 stop 参数不截断字符画；生成接口始终输出完整选中内容。
 - Token 用量是 UTF-8 字节数除以 4 向上取整的模拟值，不是官方 tokenizer 结果。
 - WebSocket 仅维护当前连接的上一轮 ID 和模型，HTTP Responses 不持久化会话。

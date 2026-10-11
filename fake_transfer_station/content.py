@@ -9,6 +9,7 @@ from uuid import uuid4
 from .config import Config, Model, ResolvedStreaming
 from .errors import APIError
 from .thinking import requested_effort
+from .matching import last_user_text, render_content
 
 CLAUDE_PREFIX = "claude-fable-5-dd-"
 
@@ -97,9 +98,10 @@ class ContentEngine:
         self.config = config
         self.rng = rng or random.SystemRandom()
         self.models = {name: model for model in config.prank.models for name in [model.id, *model.aliases]}
-        if any(item.text is None for pool in config.prank.content_pools.values() for item in pool.items):
+        self.rules = sorted(config.prank.match_rules, key=lambda rule: rule.priority, reverse=True)
+        if any(item.file is not None for pool in config.prank.content_pools.values() for item in pool.items):
             raise ValueError("content files must be loaded with load_config before creating the application")
-        if any(thought.text is None for pool in config.prank.content_pools.values() for item in pool.items
+        if any(thought.file is not None for pool in config.prank.content_pools.values() for item in pool.items
                if item.thinking for thought in item.thinking.items):
             raise ValueError("thinking files must be loaded with load_config before creating the application")
         for model in config.prank.models:
@@ -128,13 +130,21 @@ class ContentEngine:
         level = requested_effort(payload)
         settings = ResolvedStreaming.model_validate({**self.config.prank.streaming.model_dump(),
                                             **model.streaming.model_dump(exclude_none=True)})
-        pool = self.config.prank.content_pools[model.content_pool or self.config.prank.default_content_pool]
+        pool_name = model.content_pool or self.config.prank.default_content_pool
+        if not prewarm and self.rules:
+            user_text = last_user_text(payload)
+            if user_text:
+                for rule in self.rules:
+                    if rule.matches(user_text):
+                        pool_name = rule.content_pool
+                        break
+        pool = self.config.prank.content_pools[pool_name]
         selected = None if prewarm else self.rng.choices(pool.items, weights=[item.weight for item in pool.items], k=1)[0]
-        text = selected.text if selected else ""
+        text = render_content(selected, model) if selected else ""
         thought = ""
         if selected and selected.thinking and allow_thinking and level not in (None, "none"):
             items = selected.thinking.items
-            thought = self.rng.choices(items, weights=[item.weight for item in items], k=1)[0].text
+            thought = render_content(self.rng.choices(items, weights=[item.weight for item in items], k=1)[0], model)
         if text is None:
             raise ValueError("content files must be loaded before creating the application")
         return Generation(name.strip(), text, settings, input_tokens(payload), estimate_tokens(text),
